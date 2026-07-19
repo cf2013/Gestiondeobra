@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../auth/AuthProvider";
 import { useBuilding } from "../hooks/useBuilding";
@@ -6,6 +6,7 @@ import BuildingCanvas from "../components/BuildingCanvas";
 import UnitDetailPanel from "../components/UnitDetailPanel";
 import QRModal from "../components/QRModal";
 import CatalogManager from "../components/CatalogManager";
+import ReviewPanel from "../components/ReviewPanel";
 
 const etiqueta = (piso, n) => `${piso}${String(n).padStart(2, "0")}`;
 const DEFAULT_UNITS = 4;
@@ -16,9 +17,24 @@ export default function SupervisorDashboard() {
   const [selectedId, setSelectedId] = useState(null);
   const [qrUnit, setQrUnit] = useState(null);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [pendCount, setPendCount] = useState(0);
   const [busy, setBusy] = useState(false);
 
   const selected = units.find((u) => u.id === selectedId) || null;
+
+  // Contador de propuestas pendientes de revisión
+  const loadPend = useCallback(async () => {
+    const [a, m] = await Promise.all([
+      supabase.from("avance_propuestas").select("id", { count: "exact", head: true }).eq("estado", "pendiente"),
+      supabase.from("material_propuestas").select("id", { count: "exact", head: true }).eq("estado", "pendiente"),
+    ]);
+    setPendCount((a.count || 0) + (m.count || 0));
+  }, []);
+
+  useEffect(() => {
+    loadPend();
+  }, [loadPend]);
 
   // Pisos de arriba hacia abajo con su conteo
   const floors = useMemo(() => {
@@ -92,6 +108,9 @@ export default function SupervisorDashboard() {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span className="pill">Avance obra: {avgAvance}%</span>
+          <button className={pendCount > 0 ? "btn-review" : ""} onClick={() => setShowReview(true)}>
+            🔎 Revisión {pendCount > 0 && <span className="count-badge">{pendCount}</span>}
+          </button>
           <button onClick={() => setShowCatalog(true)}>🗂️ Catálogos</button>
           <button onClick={signOut}>Salir</button>
         </div>
@@ -158,6 +177,15 @@ export default function SupervisorDashboard() {
 
       {qrUnit && <QRModal unit={qrUnit} onClose={() => setQrUnit(null)} />}
       {showCatalog && <CatalogManager onClose={() => setShowCatalog(false)} onChanged={reload} />}
+      {showReview && (
+        <ReviewPanel
+          onClose={() => setShowReview(false)}
+          onChanged={() => {
+            loadPend();
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }

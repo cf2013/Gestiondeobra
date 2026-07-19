@@ -8,11 +8,8 @@ export default function EjecutorQR() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [nuevaAct, setNuevaAct] = useState("");
   const [matId, setMatId] = useState("");
   const [cant, setCant] = useState("");
-  const [nuevoMat, setNuevoMat] = useState("");
-  const [nuevoMatU, setNuevoMatU] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -45,14 +42,6 @@ export default function EjecutorQR() {
       })
     );
 
-  const addAct = (e) => {
-    e.preventDefault();
-    if (!nuevaAct.trim()) return;
-    guardar(() =>
-      supabase.rpc("qr_agregar_actividad", { p_token: token, p_nombre: nuevaAct.trim(), p_peso: 1 })
-    ).then(() => setNuevaAct(""));
-  };
-
   const registrarMat = (e) => {
     e.preventDefault();
     if (!matId || !cant) return;
@@ -68,21 +57,6 @@ export default function EjecutorQR() {
     });
   };
 
-  const addMat = (e) => {
-    e.preventDefault();
-    if (!nuevoMat.trim()) return;
-    guardar(() =>
-      supabase.rpc("qr_agregar_material", {
-        p_token: token,
-        p_nombre: nuevoMat.trim(),
-        p_unidad_medida: nuevoMatU.trim() || null,
-      })
-    ).then(() => {
-      setNuevoMat("");
-      setNuevoMatU("");
-    });
-  };
-
   if (loading) return <div className="fullscreen-center"><div className="spinner" /><p>Cargando…</p></div>;
   if (error || !data?.unidad)
     return (
@@ -95,10 +69,13 @@ export default function EjecutorQR() {
     );
 
   const acts = data.actividades || [];
+  // El avance mostrado al ejecutor es aprobado (lo que ya cuenta oficialmente)
   const total = acts.reduce((s, a) => s + Number(a.peso), 0);
-  const done = acts.filter((a) => a.completada).reduce((s, a) => s + Number(a.peso), 0);
-  const pct = total ? Math.round((done / total) * 100) : 0;
+  const doneAprob = acts.filter((a) => a.aprobada).reduce((s, a) => s + Number(a.peso), 0);
+  const pct = total ? Math.round((doneAprob / total) * 100) : 0;
   const color = colorForProgress(pct);
+  const materiales = [...(data.materiales_pendientes || []), ...(data.materiales_usados || [])];
+  const hayPendientes = acts.some((a) => a.pendiente) || (data.materiales_pendientes || []).length > 0;
 
   return (
     <div className="ejec-wrap">
@@ -115,33 +92,35 @@ export default function EjecutorQR() {
           <div className="progress-bar big">
             <div style={{ width: `${pct}%`, background: color }} />
           </div>
-          <span>{pct}% de avance {saving && "· guardando…"}</span>
+          <span>{pct}% aprobado {saving && "· guardando…"}</span>
         </div>
 
-        <h3>Actividades de hoy</h3>
+        <div className="ejec-note">
+          📋 Lo que marques aquí se envía como <b>propuesta</b>. El supervisor debe dar el visto bueno
+          para que cuente en el avance oficial.
+        </div>
+
+        <h3>Actividades</h3>
         <div className="ejec-list">
           {acts.map((a) => (
-            <label key={a.id} className="act-row big">
+            <label key={a.id} className={`act-row big ${a.pendiente ? "pend" : ""}`}>
               <input type="checkbox" checked={a.completada} onChange={() => toggleAct(a)} />
               <span>{a.nombre}</span>
+              {a.pendiente && <span className="tag-pend">⏳ pendiente</span>}
               <span className="peso-badge">{a.peso}%</span>
             </label>
           ))}
         </div>
-        <form className="ejec-add" onSubmit={addAct}>
-          <input placeholder="Nueva actividad…" value={nuevaAct} onChange={(e) => setNuevaAct(e.target.value)} />
-          <button className="btn-accent" type="submit">+</button>
-        </form>
 
         <h3>Materiales usados</h3>
         <div className="ejec-list">
-          {(data.materiales_usados || []).map((m) => (
-            <div key={m.id} className="mat">
+          {materiales.length === 0 && <div className="empty">Aún nada.</div>}
+          {materiales.map((m) => (
+            <div key={m.id} className={`mat ${m.pendiente ? "pend" : ""}`}>
               {m.material} · {m.cantidad} {m.unidad_medida || ""}
-              <span className="mat-fecha">{m.fecha}</span>
+              {m.pendiente ? <span className="tag-pend">⏳ pendiente</span> : <span className="mat-fecha">{m.fecha}</span>}
             </div>
           ))}
-          {(data.materiales_usados || []).length === 0 && <div className="empty">Aún nada.</div>}
         </div>
 
         <form className="mat-form" onSubmit={registrarMat}>
@@ -155,11 +134,9 @@ export default function EjecutorQR() {
           <button className="btn-accent" type="submit">Registrar</button>
         </form>
 
-        <form className="ejec-add" onSubmit={addMat}>
-          <input placeholder="Nuevo material…" value={nuevoMat} onChange={(e) => setNuevoMat(e.target.value)} />
-          <input placeholder="Unidad" value={nuevoMatU} onChange={(e) => setNuevoMatU(e.target.value)} style={{ maxWidth: 90 }} />
-          <button className="btn-accent" type="submit">+</button>
-        </form>
+        {hayPendientes && (
+          <div className="ejec-foot">Tienes cambios <b>pendientes de aprobación</b> del supervisor.</div>
+        )}
       </div>
     </div>
   );
