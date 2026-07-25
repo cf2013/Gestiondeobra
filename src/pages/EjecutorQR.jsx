@@ -89,9 +89,8 @@ export default function EjecutorQR() {
     );
 
   const acts = data.actividades || [];
-  const total = acts.reduce((s, a) => s + Number(a.peso), 0);
-  const doneAprob = acts.filter((a) => a.aprobada).reduce((s, a) => s + Number(a.peso), 0);
-  const pct = total ? Math.round((doneAprob / total) * 100) : 0;
+  // Avance oficial (ponderado por progreso parcial) calculado en el backend
+  const pct = Number(data.avance || 0);
   const color = colorForProgress(pct);
   const materiales = [...(data.materiales_pendientes || []), ...(data.materiales_usados || [])];
   const hayPendientes = acts.some((a) => a.pendiente) || (data.materiales_pendientes || []).length > 0;

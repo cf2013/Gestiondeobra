@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { colorForProgress } from "../lib/buildingLayout";
 
@@ -11,12 +11,13 @@ export default function UnitDetailPanel({ unit, editable, onChanged, onQR }) {
   const [loading, setLoading] = useState(true);
   const [matId, setMatId] = useState("");
   const [cant, setCant] = useState("");
+  const latest = useRef({}); // último progreso por actividad (para commit al soltar)
 
   async function load() {
     setLoading(true);
     const [a, ua, m, r] = await Promise.all([
       supabase.from("actividades").select("*").order("orden"),
-      supabase.from("unidad_actividad").select("actividad_id, completada").eq("unidad_id", unit.id),
+      supabase.from("unidad_actividad").select("actividad_id, progreso").eq("unidad_id", unit.id),
       supabase.from("materiales").select("*").order("nombre"),
       supabase
         .from("registro_materiales")
@@ -24,9 +25,9 @@ export default function UnitDetailPanel({ unit, editable, onChanged, onQR }) {
         .eq("unidad_id", unit.id)
         .order("fecha", { ascending: false }),
     ]);
-    const done = {};
-    (ua.data || []).forEach((x) => (done[x.actividad_id] = x.completada));
-    setActs((a.data || []).map((x) => ({ ...x, completada: !!done[x.id] })));
+    const prog = {};
+    (ua.data || []).forEach((x) => (prog[x.actividad_id] = x.progreso ?? 0));
+    setActs((a.data || []).map((x) => ({ ...x, progreso: prog[x.id] ?? 0 })));
     setMats(m.data || []);
     setReg(r.data || []);
     setLoading(false);
@@ -37,16 +38,27 @@ export default function UnitDetailPanel({ unit, editable, onChanged, onQR }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit.id]);
 
-  async function toggle(act) {
+  // Mientras se arrastra: solo estado local (sin escribir en DB)
+  function onSlide(act, value) {
+    const progreso = Number(value);
+    latest.current[act.id] = progreso;
+    setActs((prev) => prev.map((x) => (x.id === act.id ? { ...x, progreso } : x)));
+  }
+
+  // Al soltar el slider: persistir
+  async function commit(act) {
     if (!editable) return;
-    const completada = !act.completada;
-    setActs((prev) => prev.map((x) => (x.id === act.id ? { ...x, completada } : x)));
-    await supabase
-      .from("unidad_actividad")
-      .upsert(
-        { unidad_id: unit.id, actividad_id: act.id, completada, fecha: today() },
-        { onConflict: "unidad_id,actividad_id" }
-      );
+    const progreso = latest.current[act.id] ?? act.progreso;
+    await supabase.from("unidad_actividad").upsert(
+      {
+        unidad_id: unit.id,
+        actividad_id: act.id,
+        progreso,
+        completada: progreso >= 100,
+        fecha: today(),
+      },
+      { onConflict: "unidad_id,actividad_id" }
+    );
     onChanged?.();
   }
 
@@ -64,7 +76,7 @@ export default function UnitDetailPanel({ unit, editable, onChanged, onQR }) {
   }
 
   const totalPeso = acts.reduce((s, a) => s + Number(a.peso), 0);
-  const donePeso = acts.filter((a) => a.completada).reduce((s, a) => s + Number(a.peso), 0);
+  const donePeso = acts.reduce((s, a) => s + (Number(a.peso) * (a.progreso || 0)) / 100, 0);
   const pct = totalPeso ? Math.round((donePeso / totalPeso) * 100) : 0;
   const color = colorForProgress(pct);
 
@@ -85,14 +97,32 @@ export default function UnitDetailPanel({ unit, editable, onChanged, onQR }) {
       ) : (
         <>
           <div className="mock-list">
-            <div className="mock-title">Actividades {editable && <span className="hint-inline">(marca las hechas)</span>}</div>
+            <div className="mock-title">Actividades {editable && <span className="hint-inline">(desliza para fijar el avance)</span>}</div>
             {acts.length === 0 && <div className="empty">Sin actividades en el catálogo.</div>}
             {acts.map((a) => (
-              <label key={a.id} className={`act-row ${!editable ? "ro" : ""}`}>
-                <input type="checkbox" checked={a.completada} disabled={!editable} onChange={() => toggle(a)} />
-                <span>{a.nombre}</span>
-                <span className="peso-badge">{a.peso}%</span>
-              </label>
+              <div key={a.id} className={`act-slider ${!editable ? "ro" : ""}`}>
+                <div className="act-slider-head">
+                  <span className="act-name">{a.nombre}</span>
+                  <span className="peso-badge">{a.peso}%</span>
+                  <span className="act-prog" style={{ color: colorForProgress(a.progreso || 0) }}>
+                    {a.progreso || 0}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={a.progreso || 0}
+                  disabled={!editable}
+                  className="slider"
+                  style={{ "--fill": `${a.progreso || 0}%`, "--c": colorForProgress(a.progreso || 0) }}
+                  onChange={(e) => onSlide(a, e.target.value)}
+                  onMouseUp={() => commit(a)}
+                  onTouchEnd={() => commit(a)}
+                  onKeyUp={() => commit(a)}
+                />
+              </div>
             ))}
           </div>
 
