@@ -211,3 +211,33 @@
 .ejec-add input:first-child { flex: 1; }
 .progress-bar.big { height: 14px; }
 .qr-error { text-align: center; color: var(--muted); }
+
+/* Aviso de solo-lectura / no asignado en la pantalla del QR */
+.ejec-note.warn { background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.32); color: #fcd34d; display: flex; flex-direction: column; align-items: flex-start; }
+.ejec-note.warn .btn-accent { align-self: stretch; }
+.act-row.readonly { opacity: .8; }
+.act-row.readonly input { cursor: not-allowed; }
+
+/* Home del ejecutor: lista de deptos asignados */
+.asig-link { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg-soft); border: 1px solid var(--border); padding: 12px 14px; border-radius: 12px; text-decoration: none; color: inherit; }
+.asig-link:hover { border-color: var(--accent); }
+.asig-go { color: var(--accent); font-size: 13px; font-weight: 700; }
+
+/* Gestor de ejecutores */
+.ejec-manager { display: grid; grid-template-columns: 1fr 1.1fr; gap: 22px; }
+@media (max-width: 720px) { .ejec-manager { grid-template-columns: 1fr; } }
+.ejec-manager h4 { margin: 0 0 10px; }
+.cat-form.col { flex-direction: column; align-items: stretch; }
+.cat-form.col input { width: 100%; }
+.ejec-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; width: 100%; padding: 9px 11px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px; }
+.ejec-pick.active { border-color: var(--accent); background: rgba(91,140,255,.12); }
+.ejec-pick .muted { color: var(--muted); font-size: 12px; }
+.muted { color: var(--muted); }
+
+.asig-floors { display: flex; flex-direction: column; gap: 12px; max-height: 52vh; overflow-y: auto; }
+.asig-floor-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.asig-units { display: flex; flex-wrap: wrap; gap: 8px; }
+.asig-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 999px; font-size: 13px; cursor: pointer; }
+.asig-chip.on { border-color: var(--accent); background: rgba(91,140,255,.14); color: #cbd8ff; }
+
+.review-by { font-size: 11px; color: var(--accent) !important; }

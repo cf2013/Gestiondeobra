@@ -12,12 +12,12 @@ export default function ReviewPanel({ onClose, onChanged }) {
     const [a, m] = await Promise.all([
       supabase
         .from("avance_propuestas")
-        .select("id, completada, creado_at, unidades(etiqueta, numero_piso), actividades(nombre, peso)")
+        .select("id, completada, creado_at, unidades(etiqueta, numero_piso), actividades(nombre, peso), perfiles:creado_por(nombre)")
         .eq("estado", "pendiente")
         .order("creado_at"),
       supabase
         .from("material_propuestas")
-        .select("id, cantidad, creado_at, unidades(etiqueta, numero_piso), materiales(nombre, unidad_medida)")
+        .select("id, cantidad, creado_at, unidades(etiqueta, numero_piso), materiales(nombre, unidad_medida), perfiles:creado_por(nombre)")
         .eq("estado", "pendiente")
         .order("creado_at"),
     ]);
@@ -79,6 +79,7 @@ export default function ReviewPanel({ onClose, onChanged }) {
                       <span className={`tag ${a.completada ? "ok" : "bad"}`}>
                         {a.completada ? "marcar hecha" : "desmarcar"} · {a.actividades?.peso}%
                       </span>
+                      {a.perfiles?.nombre && <span className="review-by">👷 {a.perfiles.nombre}</span>}
                     </div>
                     <div className="review-actions">
                       <button className="ok-btn" disabled={busy} onClick={() => act("aprobar_avance", a.id)}>✓</button>
@@ -98,6 +99,7 @@ export default function ReviewPanel({ onClose, onChanged }) {
                     <div className="review-info">
                       <strong>Depto {m.unidades?.etiqueta}</strong>
                       <span>{m.materiales?.nombre} · {m.cantidad} {m.materiales?.unidad_medida || ""}</span>
+                      {m.perfiles?.nombre && <span className="review-by">👷 {m.perfiles.nombre}</span>}
                     </div>
                     <div className="review-actions">
                       <button className="ok-btn" disabled={busy} onClick={() => act("aprobar_material", m.id)}>✓</button>

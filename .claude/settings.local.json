@@ -4,7 +4,8 @@
       "Bash(npm --version)",
       "Bash(npm create *)",
       "Bash(cd *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(npm run *)"
     ]
   }
 }

@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 
 export default function Login() {
   const { session, signIn, signUp } = useAuth();
+  const [params] = useSearchParams();
+  const redirect = params.get("redirect") || "/";
   const [mode, setMode] = useState("signin"); // 'signin' | 'signup'
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -13,7 +15,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  if (session) return <Navigate to="/" replace />;
+  if (session) return <Navigate to={redirect} replace />;
 
   async function submit(e) {
     e.preventDefault();
@@ -107,7 +109,7 @@ export default function Login() {
                 </label>
               )}
               <p className="field-hint" style={{ margin: 0 }}>
-                El personal de obra (ejecutor) no necesita cuenta: registra su trabajo escaneando el QR del depto.
+                Las cuentas de <b>ejecutor</b> las crea el supervisor desde su panel; no se registran aquí.
               </p>
             </>
           )}
