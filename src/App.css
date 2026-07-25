@@ -264,6 +264,16 @@ input[type="range"].slider::-moz-range-thumb {
   border: 3px solid var(--c, var(--accent)); cursor: pointer;
 }
 
+/* ---------- Ítem de actividad con slider en Catálogos ---------- */
+.cat-act { display: flex; flex-direction: column; gap: 7px; background: var(--bg-soft); border: 1px solid var(--border); padding: 9px 11px; border-radius: 10px; }
+.cat-act-head { display: flex; align-items: center; gap: 8px; }
+.cat-act-name { flex: 1; font-size: 13px; }
+.peso-input { width: 58px; text-align: right; padding: 4px 6px; }
+.pct-sign { color: var(--muted); font-size: 12px; margin-left: -2px; }
+.cat-save-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.cat-save-row .hint { margin: 0; }
+.hint-inline.warn { color: var(--warn); }
+
 /* ---------- Vista previa de reajuste de pesos ---------- */
 .modal-overlay.inner { background: rgba(0,0,0,.55); }
 .preview-list { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 12px; }

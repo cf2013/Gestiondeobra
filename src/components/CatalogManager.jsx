@@ -18,6 +18,8 @@ function distribuir(pesos, target) {
   return out;
 }
 
+const clamp = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+
 export default function CatalogManager({ onClose, onChanged }) {
   const [acts, setActs] = useState([]);
   const [mats, setMats] = useState([]);
@@ -26,8 +28,10 @@ export default function CatalogManager({ onClose, onChanged }) {
   const [mNombre, setMNombre] = useState("");
   const [mUnidad, setMUnidad] = useState("");
   const [err, setErr] = useState(null);
-  const [preview, setPreview] = useState(null); // { nombre, peso, filas:[{id,nombre,actual,nuevo}], nueva }
+  // preview unificado: { tipo:'add'|'edit', nombre?, filas:[{id,nombre,actual,nuevo}], nueva? }
+  const [preview, setPreview] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({}); // peso en edición (borrador) por actividad
 
   async function load() {
     const [a, m] = await Promise.all([
@@ -41,47 +45,79 @@ export default function CatalogManager({ onClose, onChanged }) {
     load();
   }, []);
 
-  const totalPeso = acts.reduce((s, a) => s + Number(a.peso), 0);
+  // Sincroniza el borrador con los pesos guardados (al cargar y tras guardar)
+  useEffect(() => {
+    const m = {};
+    acts.forEach((a) => (m[a.id] = Number(a.peso)));
+    setDraft(m);
+  }, [acts]);
 
-  // Paso 1: abrir preview del reajuste (no guarda todavía)
+  const pesoDe = (a) => (draft[a.id] ?? Number(a.peso));
+  const totalDraft = acts.reduce((s, a) => s + pesoDe(a), 0);
+  const dirty = acts.some((a) => pesoDe(a) !== Number(a.peso));
+
+  function setPeso(id, valor) {
+    setDraft((prev) => ({ ...prev, [id]: clamp(valor) }));
+  }
+
+  // ---- AGREGAR: preview con las existentes reescaladas (usa el borrador) ----
   function pedirAgregar(e) {
     e.preventDefault();
     setErr(null);
     if (!aNombre.trim()) return;
-    const W = Math.max(0, Math.min(100, Math.round(Number(aPeso) || 0)));
+    const W = clamp(aPeso);
     if (acts.length === 0) {
-      // Primera actividad: siempre 100 %
-      setPreview({ nombre: aNombre.trim(), filas: [], nueva: 100 });
+      setPreview({ tipo: "add", nombre: aNombre.trim(), filas: [], nueva: 100 });
       return;
     }
-    const target = 100 - W; // lo que se reparte entre las existentes
-    const nuevos = distribuir(acts.map((a) => Number(a.peso)), target);
+    const nuevos = distribuir(acts.map((a) => pesoDe(a)), 100 - W);
     const filas = acts.map((a, i) => ({
       id: a.id,
       nombre: a.nombre,
       actual: Number(a.peso),
       nuevo: nuevos[i],
     }));
-    setPreview({ nombre: aNombre.trim(), filas, nueva: W });
+    setPreview({ tipo: "add", nombre: aNombre.trim(), filas, nueva: W });
   }
 
-  // Paso 2: confirmar -> actualizar pesos existentes + insertar la nueva
-  async function confirmarAgregar() {
+  // ---- GUARDAR PESOS: normaliza todo el borrador a 100% y abre preview ----
+  function pedirGuardarPesos() {
+    if (!dirty) return;
+    setErr(null);
+    const nuevos = distribuir(acts.map((a) => pesoDe(a)), 100);
+    const filas = acts.map((a, i) => ({
+      id: a.id,
+      nombre: a.nombre,
+      actual: Number(a.peso),
+      nuevo: nuevos[i],
+    }));
+    setPreview({ tipo: "edit", filas });
+  }
+
+  const cancelarPreview = () => !saving && setPreview(null); // conserva el borrador
+
+  // ---- CONFIRMAR: sirve para add y edit ----
+  async function confirmarPreview() {
     setSaving(true);
     setErr(null);
     try {
-      if (preview.filas.length) {
-        const updates = preview.filas.map((f) => ({ id: f.id, peso: f.nuevo }));
-        const { error } = await supabase.from("actividades").upsert(updates, { onConflict: "id" });
-        if (error) throw error;
+      // update por fila (un upsert nulificaría `nombre` NOT NULL en el INSERT)
+      const cambiadas = preview.filas.filter((f) => f.nuevo !== f.actual);
+      const res = await Promise.all(
+        cambiadas.map((f) => supabase.from("actividades").update({ peso: f.nuevo }).eq("id", f.id))
+      );
+      const failed = res.find((r) => r.error);
+      if (failed) throw failed.error;
+
+      if (preview.tipo === "add") {
+        const orden = (acts.reduce((m, a) => Math.max(m, a.orden), 0) || 0) + 1;
+        const { error: e2 } = await supabase
+          .from("actividades")
+          .insert({ nombre: preview.nombre, peso: preview.nueva, orden });
+        if (e2) throw e2;
+        setANombre("");
+        setAPeso("");
       }
-      const orden = (acts.reduce((m, a) => Math.max(m, a.orden), 0) || 0) + 1;
-      const { error: e2 } = await supabase
-        .from("actividades")
-        .insert({ nombre: preview.nombre, peso: preview.nueva, orden });
-      if (e2) throw e2;
-      setANombre("");
-      setAPeso("");
       setPreview(null);
       await load();
       onChanged?.();
@@ -111,12 +147,16 @@ export default function CatalogManager({ onClose, onChanged }) {
     setErr(null);
     const { error } = await supabase.from("actividades").delete().eq("id", id);
     if (error) return setErr(error.message);
-    // Reajustar los restantes a 100 %
     const restantes = acts.filter((a) => a.id !== id);
     if (restantes.length) {
       const nuevos = distribuir(restantes.map((a) => Number(a.peso)), 100);
-      const updates = restantes.map((a, i) => ({ id: a.id, peso: nuevos[i] }));
-      await supabase.from("actividades").upsert(updates, { onConflict: "id" });
+      await Promise.all(
+        restantes.map((a, i) =>
+          nuevos[i] !== Number(a.peso)
+            ? supabase.from("actividades").update({ peso: nuevos[i] }).eq("id", a.id)
+            : Promise.resolve()
+        )
+      );
     }
     await load();
     onChanged?.();
@@ -128,6 +168,8 @@ export default function CatalogManager({ onClose, onChanged }) {
     await load();
     onChanged?.();
   }
+
+  const totalOk = totalDraft === 100;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -141,22 +183,62 @@ export default function CatalogManager({ onClose, onChanged }) {
 
         <div className="catalog-grid">
           <section>
-            <h4>Actividades <span className="hint-inline">peso total: {totalPeso}%</span></h4>
+            <h4>
+              Actividades{" "}
+              <span className={`hint-inline ${!totalOk ? "warn" : ""}`}>total: {totalDraft}%</span>
+            </h4>
             <div className="cat-list">
-              {acts.map((a) => (
-                <div key={a.id} className="cat-item">
-                  <span>{a.nombre}</span>
-                  <span className="peso-badge">{a.peso}%</span>
-                  <button className="del" onClick={() => delAct(a.id)}>✕</button>
-                </div>
-              ))}
+              {acts.map((a) => {
+                const val = pesoDe(a);
+                return (
+                  <div key={a.id} className="cat-act">
+                    <div className="cat-act-head">
+                      <span className="cat-act-name">{a.nombre}</span>
+                      <input
+                        type="number"
+                        className="peso-input"
+                        min="0"
+                        max="100"
+                        value={val}
+                        onChange={(e) => setPeso(a.id, e.target.value)}
+                      />
+                      <span className="pct-sign">%</span>
+                      <button className="del" onClick={() => delAct(a.id)}>✕</button>
+                    </div>
+                    <input
+                      type="range"
+                      className="slider"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={val}
+                      style={{ "--fill": `${val}%` }}
+                      onChange={(e) => setPeso(a.id, e.target.value)}
+                    />
+                  </div>
+                );
+              })}
+              {acts.length === 0 && <div className="empty">Sin actividades todavía.</div>}
             </div>
+
+            {acts.length > 0 && (
+              <div className="cat-save-row">
+                <span className="hint">
+                  {dirty ? "Cambios sin guardar" : "Sin cambios"}
+                  {dirty && !totalOk && ` · se reajustará a 100%`}
+                </span>
+                <button className="btn-accent" disabled={!dirty} onClick={pedirGuardarPesos}>
+                  Guardar pesos
+                </button>
+              </div>
+            )}
+
             <form className="cat-form" onSubmit={pedirAgregar}>
               <input placeholder="Nueva actividad" value={aNombre} onChange={(e) => setANombre(e.target.value)} />
               <input type="number" min="0" max="100" step="any" placeholder="Peso %" value={aPeso} onChange={(e) => setAPeso(e.target.value)} style={{ maxWidth: 90 }} />
               <button className="btn-accent" type="submit">Agregar</button>
             </form>
-            <p className="hint" style={{ marginTop: 8 }}>Al agregar, los pesos se reajustan automáticamente para sumar 100%. Verás una vista previa antes de guardar.</p>
+            <p className="hint" style={{ marginTop: 8 }}>Ajusta los pesos con el slider o escribiéndolos; al pulsar <b>Guardar pesos</b> verás la vista previa reajustada a 100% antes de confirmar.</p>
           </section>
 
           <section>
@@ -178,16 +260,20 @@ export default function CatalogManager({ onClose, onChanged }) {
           </section>
         </div>
 
-        {/* Vista previa del reajuste de pesos */}
+        {/* Vista previa del reajuste de pesos (compartida add/edit) */}
         {preview && (
-          <div className="modal-overlay inner" onClick={() => !saving && setPreview(null)}>
+          <div className="modal-overlay inner" onClick={cancelarPreview}>
             <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
               <div className="modal-head">
                 <h3 style={{ margin: 0 }}>Vista previa · reajuste a 100%</h3>
-                <button onClick={() => !saving && setPreview(null)}>✕</button>
+                <button onClick={cancelarPreview}>✕</button>
               </div>
               <p className="hint" style={{ marginTop: 0 }}>
-                Al agregar <b>“{preview.nombre}”</b>{preview.filas.length ? " los pesos de las demás actividades se ajustan así:" : " (primera actividad):"}
+                {preview.tipo === "add"
+                  ? preview.filas.length
+                    ? <>Al agregar <b>“{preview.nombre}”</b> los pesos quedan así:</>
+                    : <>Primera actividad <b>“{preview.nombre}”</b>:</>
+                  : <>Los pesos se guardarán reajustados a 100%:</>}
               </p>
               <div className="preview-list">
                 {preview.filas.map((f) => (
@@ -200,19 +286,21 @@ export default function CatalogManager({ onClose, onChanged }) {
                     </span>
                   </div>
                 ))}
-                <div className="preview-row nueva">
-                  <span>➕ {preview.nombre}</span>
-                  <span className="preview-change">
-                    <span className="new chg">{preview.nueva}%</span>
-                  </span>
-                </div>
+                {preview.tipo === "add" && (
+                  <div className="preview-row nueva">
+                    <span>➕ {preview.nombre}</span>
+                    <span className="preview-change">
+                      <span className="new chg">{preview.nueva}%</span>
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="preview-total">
-                Total: <b>{preview.filas.reduce((s, f) => s + f.nuevo, 0) + preview.nueva}%</b>
+                Total: <b>{preview.filas.reduce((s, f) => s + f.nuevo, 0) + (preview.tipo === "add" ? preview.nueva : 0)}%</b>
               </div>
               <div className="preview-actions">
-                <button onClick={() => setPreview(null)} disabled={saving}>Cancelar</button>
-                <button className="btn-accent" onClick={confirmarAgregar} disabled={saving}>
+                <button onClick={cancelarPreview} disabled={saving}>Cancelar</button>
+                <button className="btn-accent" onClick={confirmarPreview} disabled={saving}>
                   {saving ? "Guardando…" : "Guardar cambios"}
                 </button>
               </div>
