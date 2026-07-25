@@ -7,6 +7,7 @@ import UnitDetailPanel from "../components/UnitDetailPanel";
 import QRModal from "../components/QRModal";
 import CatalogManager from "../components/CatalogManager";
 import ReviewPanel from "../components/ReviewPanel";
+import EjecutoresManager from "../components/EjecutoresManager";
 
 const etiqueta = (piso, n) => `${piso}${String(n).padStart(2, "0")}`;
 const DEFAULT_UNITS = 4;
@@ -18,6 +19,7 @@ export default function SupervisorDashboard() {
   const [qrUnit, setQrUnit] = useState(null);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showReview, setShowReview] = useState(false);
+  const [showEjecutores, setShowEjecutores] = useState(false);
   const [pendCount, setPendCount] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -111,6 +113,7 @@ export default function SupervisorDashboard() {
           <button className={pendCount > 0 ? "btn-review" : ""} onClick={() => setShowReview(true)}>
             🔎 Revisión {pendCount > 0 && <span className="count-badge">{pendCount}</span>}
           </button>
+          <button onClick={() => setShowEjecutores(true)}>👷 Ejecutores</button>
           <button onClick={() => setShowCatalog(true)}>🗂️ Catálogos</button>
           <button onClick={signOut}>Salir</button>
         </div>
@@ -177,6 +180,7 @@ export default function SupervisorDashboard() {
 
       {qrUnit && <QRModal unit={qrUnit} onClose={() => setQrUnit(null)} />}
       {showCatalog && <CatalogManager onClose={() => setShowCatalog(false)} onChanged={reload} />}
+      {showEjecutores && <EjecutoresManager onClose={() => setShowEjecutores(false)} />}
       {showReview && (
         <ReviewPanel
           onClose={() => setShowReview(false)}

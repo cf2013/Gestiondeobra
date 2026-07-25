@@ -1,10 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../auth/AuthProvider";
 import { colorForProgress } from "../lib/buildingLayout";
 
 export default function EjecutorQR() {
   const { token } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { session } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,10 +27,14 @@ export default function EjecutorQR() {
 
   useEffect(() => {
     load();
-  }, [load]);
+    // recargar cuando cambia la sesión (p. ej. tras iniciar sesión)
+  }, [load, session?.user?.id]);
+
+  const puedeEditar = !!data?.puede_editar;
 
   async function guardar(fn) {
     setSaving(true);
+    setError(null);
     const { error } = await fn();
     if (error) setError(error.message);
     await load();
@@ -57,8 +65,20 @@ export default function EjecutorQR() {
     });
   };
 
+  const irALogin = () =>
+    navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`);
+
   if (loading) return <div className="fullscreen-center"><div className="spinner" /><p>Cargando…</p></div>;
-  if (error || !data?.unidad)
+  if (error && !data?.unidad)
+    return (
+      <div className="fullscreen-center">
+        <div className="qr-error">
+          <div style={{ fontSize: 40 }}>🚫</div>
+          <p>QR no válido o depto no encontrado.</p>
+        </div>
+      </div>
+    );
+  if (!data?.unidad)
     return (
       <div className="fullscreen-center">
         <div className="qr-error">
@@ -69,7 +89,6 @@ export default function EjecutorQR() {
     );
 
   const acts = data.actividades || [];
-  // El avance mostrado al ejecutor es aprobado (lo que ya cuenta oficialmente)
   const total = acts.reduce((s, a) => s + Number(a.peso), 0);
   const doneAprob = acts.filter((a) => a.aprobada).reduce((s, a) => s + Number(a.peso), 0);
   const pct = total ? Math.round((doneAprob / total) * 100) : 0;
@@ -95,16 +114,41 @@ export default function EjecutorQR() {
           <span>{pct}% aprobado {saving && "· guardando…"}</span>
         </div>
 
-        <div className="ejec-note">
-          📋 Lo que marques aquí se envía como <b>propuesta</b>. El supervisor debe dar el visto bueno
-          para que cuente en el avance oficial.
-        </div>
+        {/* Aviso según el estado de sesión / asignación */}
+        {!session ? (
+          <div className="ejec-note warn">
+            🔒 Estás viendo el avance en <b>solo lectura</b>. Inicia sesión como ejecutor para registrar.
+            <button className="btn-accent" style={{ marginTop: 10 }} onClick={irALogin}>
+              Iniciar sesión para registrar
+            </button>
+          </div>
+        ) : !puedeEditar ? (
+          <div className="ejec-note warn">
+            ⚠️ No estás asignado a este departamento. Solo puedes ver el avance.
+            Pídele al supervisor que te asigne.
+          </div>
+        ) : (
+          <div className="ejec-note">
+            📋 Lo que marques aquí se envía como <b>propuesta</b>. El supervisor debe dar el visto bueno
+            para que cuente en el avance oficial.
+          </div>
+        )}
+
+        {error && <div className="auth-msg err">{error}</div>}
 
         <h3>Actividades</h3>
         <div className="ejec-list">
           {acts.map((a) => (
-            <label key={a.id} className={`act-row big ${a.pendiente ? "pend" : ""}`}>
-              <input type="checkbox" checked={a.completada} onChange={() => toggleAct(a)} />
+            <label
+              key={a.id}
+              className={`act-row big ${a.pendiente ? "pend" : ""} ${!puedeEditar ? "readonly" : ""}`}
+            >
+              <input
+                type="checkbox"
+                checked={a.completada}
+                disabled={!puedeEditar || saving}
+                onChange={() => toggleAct(a)}
+              />
               <span>{a.nombre}</span>
               {a.pendiente && <span className="tag-pend">⏳ pendiente</span>}
               <span className="peso-badge">{a.peso}%</span>
@@ -123,18 +167,20 @@ export default function EjecutorQR() {
           ))}
         </div>
 
-        <form className="mat-form" onSubmit={registrarMat}>
-          <select value={matId} onChange={(e) => setMatId(e.target.value)}>
-            <option value="">Material…</option>
-            {(data.materiales_catalogo || []).map((m) => (
-              <option key={m.id} value={m.id}>{m.nombre}</option>
-            ))}
-          </select>
-          <input type="number" min="0" step="any" placeholder="Cant." value={cant} onChange={(e) => setCant(e.target.value)} />
-          <button className="btn-accent" type="submit">Registrar</button>
-        </form>
+        {puedeEditar && (
+          <form className="mat-form" onSubmit={registrarMat}>
+            <select value={matId} onChange={(e) => setMatId(e.target.value)}>
+              <option value="">Material…</option>
+              {(data.materiales_catalogo || []).map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
+            <input type="number" min="0" step="any" placeholder="Cant." value={cant} onChange={(e) => setCant(e.target.value)} />
+            <button className="btn-accent" type="submit" disabled={saving}>Registrar</button>
+          </form>
+        )}
 
-        {hayPendientes && (
+        {puedeEditar && hayPendientes && (
           <div className="ejec-foot">Tienes cambios <b>pendientes de aprobación</b> del supervisor.</div>
         )}
       </div>

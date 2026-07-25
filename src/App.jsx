@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import SupervisorDashboard from "./pages/SupervisorDashboard";
 import OwnerView from "./pages/OwnerView";
 import EjecutorQR from "./pages/EjecutorQR";
+import EjecutorHome from "./pages/EjecutorHome";
 import "./App.css";
 
 function Loader({ label = "Cargando…" }) {
@@ -21,6 +22,7 @@ function Home() {
   if (loading) return <Loader />;
   if (!session) return <Navigate to="/login" replace />;
   if (role === "supervisor") return <SupervisorDashboard />;
+  if (role === "ejecutor") return <EjecutorHome />;
   return <OwnerView />; // propietario (y default)
 }
 
