@@ -218,6 +218,22 @@
 .act-row.readonly { opacity: .8; }
 .act-row.readonly input { cursor: not-allowed; }
 
+/* Botón "Salir" en la cabecera del ejecutor */
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 6px 12px; border-radius: 9px; font-size: 13px; cursor: pointer; }
+.btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+.ejec-logout { align-self: flex-start; }
+
+/* Marcadores de cambios sin guardar */
+.tag-edit { font-size: 11px; color: var(--accent); background: rgba(91,140,255,.12); border: 1px solid rgba(91,140,255,.3); padding: 1px 7px; border-radius: 999px; }
+.act-row.big.edited { border-color: rgba(91,140,255,.55); }
+.mat.porenviar { display: flex; align-items: center; gap: 8px; border-color: rgba(91,140,255,.4); border-style: dashed; }
+.mat-quitar { margin-left: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 4px; }
+.mat-quitar:hover { color: var(--warn); }
+
+/* Barra de guardar (envío por lotes) */
+.ejec-save-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.ejec-save-bar .btn-accent { min-width: 120px; }
+
 /* Home del ejecutor: lista de deptos asignados */
 .asig-link { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg-soft); border: 1px solid var(--border); padding: 12px 14px; border-radius: 12px; text-decoration: none; color: inherit; }
 .asig-link:hover { border-color: var(--accent); }
